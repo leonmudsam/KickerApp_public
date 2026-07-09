@@ -4,8 +4,9 @@
 # public/vendor/supabase.js — der rohe Branch ist keine lauffähige App.
 #
 # Voraussetzung: Settings → Pages → Source = "GitHub Actions".
-# Der claude/**-Trigger ist für die Phase-0/1-Entwicklung gedacht und
-# sollte nach dem Merge auf main entfernt werden.
+# Feature-Branches (claude/**) bauen nur zur Verifikation; deployt wird
+# ausschließlich von main (das github-pages-Environment erlaubt per
+# Schutzregel ohnehin nur main als Deploy-Quelle).
 name: Deploy to GitHub Pages
 
 on:
@@ -44,6 +45,7 @@ jobs:
 
   deploy:
     needs: build
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
