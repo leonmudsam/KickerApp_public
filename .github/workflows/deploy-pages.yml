@@ -1,0 +1,53 @@
+# Baut die App mit Vite und deployt dist/ nach GitHub Pages.
+# Nötig, weil das Repo seit Phase 0 Quellcode enthält, keine fertige Seite:
+# ohne Build fehlen public/app.js (concat der src/legacy-Module) und
+# public/vendor/supabase.js — der rohe Branch ist keine lauffähige App.
+#
+# Voraussetzung: Settings → Pages → Source = "GitHub Actions".
+# Der claude/**-Trigger ist für die Phase-0/1-Entwicklung gedacht und
+# sollte nach dem Merge auf main entfernt werden.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

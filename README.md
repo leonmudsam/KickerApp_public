@@ -43,6 +43,10 @@ kopiert) statt vom CDN geladen — die Version ist damit gepinnt.
 
 ## Deploy
 
-Statischer Build (`dist/`), gedacht für GitHub Pages / Cloudflare Pages.
+GitHub Actions (`.github/workflows/deploy-pages.yml`) baut bei jedem Push
+mit Vite und deployt `dist/` nach GitHub Pages — der rohe Branch ist
+**keine** lauffähige App (der Concat-Schritt erzeugt `public/app.js` erst
+beim Build). In den Repo-Settings muss Pages → Source auf
+**„GitHub Actions"** stehen.
 `BUILD_VERSION` in `src/legacy/002-s0.2-….js` bei jedem Deploy bumpen —
 der Update-Checker liest den Marker, den Vite in die `index.html` injiziert.
