@@ -1,0 +1,15 @@
+{
+  "name": "Kicker Liga",
+  "short_name": "Kicker Liga",
+  "description": "Tischkicker-Liga mit Elo, Awards, Badges und Liga-News",
+  "lang": "de",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0a0c0b",
+  "theme_color": "#0a0c0b",
+  "icons": [
+    { "src": "./icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icon.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
