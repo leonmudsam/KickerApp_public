@@ -56,7 +56,7 @@ Zusätzlich in Phase 0/1: echtes PWA-Manifest + minimaler Service Worker (nur As
 
 ## 2. Produktmodell (Free/Premium)
 
-**Prinzip:** Einmalzahlung **pro Liga** (typisch vom Gründer bezahlt, ~5–8 €), schaltet die Liga für alle Mitglieder dauerhaft frei.
+**Prinzip:** Einmalzahlung **pro Liga** (typisch vom Gründer bezahlt, **6,99 €**), schaltet die Liga für alle Mitglieder dauerhaft frei. Die bestehende Freundes-Liga erhält ein Gratis-Entitlement (`source='grant'`).
 
 **Harte Nebenbedingung:** Die Engines brauchen die **volle Match-Historie** für den Replay (Badges, Career-Elo, Saison-Neuberechnung). „Begrenzte Historie" als *Daten*-Limit würde Free-Ligen fachlich kaputt machen. Deshalb: **Free-Limits sind Feature-Gates + Spieler-Cap — niemals Daten-Beschneidung.**
 
@@ -243,7 +243,7 @@ Die alte globale `config`-Tabelle **entfällt** — die 18 Elo-Parameter wandern
 - **Home-Screen** = neue Einstiegsroute: Liga-Karten (Name, Mitglieder, dein Spieler, letzte Aktivität), Erstellen, Beitreten, Account/Einstellungen. Auto-Forward zur letzten Liga mit Back-Chevron (Splid-Verhalten).
 - **League-Context-Objekt:** `{ id, settings, entitlement, players[], matches[], seasons[], stories[] }` wird beim Öffnen gebaut und speist die bestehenden Engines. Die heutigen Globals (`players`, `matches`, Memo-Caches) werden Felder dieses Contexts; Liga-Wechsel = Teardown + Neuaufbau. **Wichtigster Refactor-Punkt: alle Memo-Caches beim Wechsel resetten** — die heutige Memoization nimmt einen Datensatz pro App-Lebenszeit an (Bug-Quelle Nr. 1, siehe Risiken).
 - **Cache-Isolation:** IndexedDB pro Liga: `{matches, players, seasons, lastSyncedAt, rev}`. Öffnen → sofort aus Cache rendern → Delta-Fetch `created_at > lastSyncedAt` → wenn Server-`rev` ≠ Cache-`rev` (Edit/Delete passiert), Full-Refetch. Das löst das „4 Full-Scans pro Start"-Problem billiger als jedes Server-Aggregat.
-- **Realtime-Scoping:** ein Channel pro geöffneter Liga, `postgres_changes` mit Filter `league_id=eq.{id}` auf `stories` (optional `matches`, ersetzt das 30s-Polling). Respektiert RLS. Nur die aktive Liga subscribed.
+- **Realtime-Scoping:** ein Channel pro geöffneter Liga, `postgres_changes` mit Filter `league_id=eq.{id}` auf `stories` **und `matches`** — ersetzt das 30s-Polling **schon in Phase 1** (Entscheidung Leon); das Polling bleibt nur als Fallback bei Channel-Abbruch. Respektiert RLS. Nur die aktive Liga subscribed.
 - Story-Generierung, Fun-Fact-Seeds, Saison-Rollover laufen pro geöffneter Liga wie heute; deterministische IDs sind jetzt `(league_id, story_key)` → Cross-Liga-Kollisionen konstruktionsbedingt unmöglich.
 
 **Liga-Einstellungen — v1 vs. später (kritisch gefiltert):**
@@ -307,27 +307,27 @@ Extraktionsregel: **Engines wandern wortwörtlich**; nur ihre Inputs ändern sic
 ## 13. Umsetzungsphasen (jede shippbar)
 
 - **Phase 0 — Extraktion (kein Verhaltensänderung):** Vite-Scaffold, index.html in Module zerlegen (§11a), Texte zentralisieren, PWA-Manifest + Asset-SW, statisches Hosting — **gegen die alte DB**, an die bestehende Freundesgruppe shippen, Pixel-/Stat-Parität verifizieren.
-- **Phase 1 — Plattform-Kern (das echte v1):** neues Schema + RLS + RPCs + Trigger als Migrations; Anonymous Auth; Home-Screen, Create/Join/Invite/Share; League-Context + IndexedDB-Delta-Cache; Stories neu gekeyt. Liga-Settings bei Erstellung: **nur Name, Start-Elo, Monatsreset**. Alles free/unlimitiert — noch keine Entitlements-UI.
-- **Phase 2 — Plattform-Politur:** Account-Linking (E-Mail-OTP), Invite-Rotation + join_enabled-UI, Rollen/Mitgliederverwaltung, Soft-Deletes + Audit-Log-Oberfläche, Claim-Flow-Politur, Liga schließen, „Welcher Spieler bist du"-Onboarding, Per-Liga-Realtime statt Polling.
+- **Phase 1 — Plattform-Kern (das echte v1):** neues Schema + RLS + RPCs + Trigger als Migrations; Anonymous Auth; Home-Screen, Create/Join/Invite/Share; League-Context + IndexedDB-Delta-Cache; Stories neu gekeyt; **Per-Liga-Realtime auf stories + matches** (30s-Polling nur als Fallback). Liga-Settings bei Erstellung: **nur Name, Start-Elo, Monatsreset**. Alles free/unlimitiert — noch keine Entitlements-UI.
+- **Phase 2 — Plattform-Politur:** Account-Linking (E-Mail-OTP), Invite-Rotation + join_enabled-UI, Rollen/Mitgliederverwaltung, Soft-Deletes + Audit-Log-Oberfläche, Claim-Flow-Politur, Liga schließen, „Welcher Spieler bist du"-Onboarding.
 - **Phase 3 — Monetarisierung (Web):** `league_entitlements`, Stripe Checkout + Webhook-Edge-Function, Spieler-Cap-Trigger, Locked-Previews + Upgrade-Screens, Free/Premium-Gates nach §2.
 - **Phase 4 — Stores:** Capacitor-Wrapper, RevenueCat-Consumable-IAP → gleiche Entitlement-Pipeline, nativer Session-Storage, ggf. Sign in with Apple.
 - **Phase 5+ (nur bei Bedarf):** season_player_stats-Snapshots / Lazy-Historie, Match-Formate (nullable a2/b2), In-App-Liga-Switcher, Feature-Toggles, Exporte/Branding, Notifications. **Optional jederzeit ab Phase 1:** Migration der alten privaten Liga (§11b) — Entscheidung offen.
 
 **v1-Scope-Empfehlung:** v1 = Phase 0+1. Bewusst NICHT in v1: Payments, E-Mail-Accounts, Rollen-UI, Feature-Toggles, Public Discovery, Match-Formate, Server-Aggregate. So kommt das Splid-artige Produkt am schnellsten zu echten Nutzern, während das Schema (league_id überall, Entitlement-Shape, settings-JSONB) bereits jede spätere Phase ohne Migrationsschmerz trägt.
 
-## 14. Vor Implementierung zu klärende Fragen
+## 14. Vor Implementierung zu klärende Fragen — ✅ alle entschieden (09.07.2026)
 
-1. Match-Edit/Delete-Rechte: jedes Mitglied (empfohlen, auditiert) oder nur Ersteller+Admin? Später Per-Liga-Setting?
-2. Spieler-Claim: exklusiv mit Übernahme (empfohlen) oder mehrere Geräte pro Spieler?
-3. Invite-Code-Sichtbarkeit: jedes Mitglied darf teilen (empfohlen, Splid-artig) oder nur Admins?
-4. Premium-Preis (~5–8 € einmalig?) und: bekommt die bestehende Freundes-Liga ein Gratis-Entitlement (`source='grant'`)?
-5. Free-Spieler-Cap: 10 (empfohlen) vs. 8 vs. 12 — gegen realistische Büro-Liga-Größen prüfen.
-6. ~~Supabase-Region EU~~ ✅ geklärt: eu-west-1.
-7. ~~Sprache~~ ✅ geklärt: Deutsch only, Texte werden in Phase 0 zentralisiert.
-8. Sync in v1: 30s-Polling behalten (billigster Start) oder Matches-Realtime schon in Phase 1?
-9. Hosting/Domain: GitHub Pages kann keine SPA-Rewrites für `/join/…`-Deep-Links → Hash-basierte Join-Links (`/#join=CODE`) oder Cloudflare Pages. Eigene Domain gewünscht?
-10. Saison-Rollover-Autorität: Client jedes Mitglieds (idempotente Upserts, empfohlen) vs. pg_cron-Server-Job.
-11. Migration der alten Liga: nach v1-Launch entscheiden (Zugriff auf alte DB oder Export nötig).
+1. ✅ Match-Edit/Delete-Rechte: **jedes Mitglied** (auditiert, Freundesgruppen-Ethos).
+2. ✅ Spieler-Claim: **exklusiv mit Übernahme** (eine `claimed_by`-Spalte, Übernahme auditiert).
+3. ✅ Invite-Code-Sichtbarkeit: **jedes Mitglied** darf sehen und teilen (Splid-artig); Admins rotieren.
+4. ✅ Premium-Preis: **6,99 € einmalig pro Liga**; bestehende Freundes-Liga bekommt Gratis-Entitlement (`source='grant'`).
+5. ✅ Free-Spieler-Cap: **10 Spieler**.
+6. ✅ Supabase-Region EU: eu-west-1.
+7. ✅ Sprache: Deutsch only, Texte werden in Phase 0 zentralisiert.
+8. ✅ Sync in v1: **Matches-Realtime ab Phase 1** (per-Liga-Channel auf stories + matches; 30s-Polling nur Fallback).
+9. ⏳ Hosting/Domain: **später entscheiden** — Phase 0 startet auf GitHub Pages mit Hash-basierten Join-Links (`/#join=CODE`); finale Hosting-/Domain-Entscheidung (z. B. Cloudflare Pages + eigene Domain) fällt vor dem Public-Launch in Phase 1.
+10. ✅ Saison-Rollover: **Client-seitig, idempotent** (erster Client im neuen Monat archiviert; deterministische Keys + Upsert).
+11. ⏳ Migration der alten Liga: nach v1-Launch entscheiden (Zugriff auf alte DB oder Export nötig).
 
 ## Verifikation (wenn später implementiert wird)
 
