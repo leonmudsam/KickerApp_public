@@ -1,0 +1,6 @@
+# Supabase-CLI-Projektkonfiguration (für `supabase start` / `supabase db push`
+# und die GitHub-Integration). Bewusst minimal gehalten.
+project_id = "kickerapp-public"
+
+[db]
+major_version = 17
