@@ -2351,6 +2351,7 @@ window.syncStoriesViaDb = syncStoriesViaDb;
 // haben `when` als Date; in der DB lebt das als `event_at` TIMESTAMPTZ.
 function _storyToRow(s){
   return {
+    league_id:   LK.id,   // PHASE 1: Stories sind (league_id, id)-gekeyt
     id:          s.id,
     type:        (s.dataRef && s.dataRef.type) || s.id.split('_')[0] || 'unknown',
     category:    s.cat,
@@ -2389,7 +2390,7 @@ async function _uploadNewStoriesToDb(stories){
   for(let i = 0; i < rows.length; i += BATCH_SIZE){
     const chunk = rows.slice(i, i + BATCH_SIZE);
     const { error } = await sb.from('stories').upsert(chunk, {
-      onConflict: 'id',
+      onConflict: 'league_id,id',   // PK ist (league_id, id) — Dedupe pro Liga
       ignoreDuplicates: true,
     });
     if(error) throw error;
@@ -2401,6 +2402,7 @@ async function _uploadNewStoriesToDb(stories){
 async function _loadStoriesFromDb(){
   const { data, error } = await sb.from('stories')
     .select('*')
+    .eq('league_id', LK.id)
     .gt('expires_at', new Date().toISOString())
     .order('event_at', { ascending: false })
     .limit(100);
@@ -2413,6 +2415,7 @@ async function _loadStoriesFromDb(){
 async function _cleanupExpiredStoriesInDb(){
   const { error } = await sb.from('stories')
     .delete()
+    .eq('league_id', LK.id)
     .lt('expires_at', new Date().toISOString());
   if(error){
     // 42P01 = Tabelle existiert nicht → Migration nicht eingespielt
@@ -2443,9 +2446,10 @@ function _ensureStoriesRealtime(){
   try {
     // Sofort referenzieren → verhindert doppeltes subscribe bei zwei schnell
     // aufeinanderfolgenden loadAll, bevor der async subscribe-Callback feuert.
-    _storiesChannel = sb.channel('stories_changes')
+    // PHASE 1: ein Channel pro Liga, serverseitig auf league_id gefiltert
+    _storiesChannel = sb.channel('stories_changes_' + LK.id)
       .on('postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'stories' },
+          { event: 'INSERT', schema: 'public', table: 'stories', filter: 'league_id=eq.' + LK.id },
           (payload) => { try { _onStoryRealtimeInsert(payload.new); }
                          catch(e){ if(NEWS_DEBUG || window.NEWS_DEBUG) console.warn('[news] realtime insert failed', e); } })
       .on('postgres_changes',

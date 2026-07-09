@@ -1,33 +1,53 @@
-# Kicker Liga → Kicker Leagues
+# Kicker Leagues
 
-Tischkicker-Liga-App (Elo · 2v2 · Awards · Badges · Liga-News) auf dem Weg
-zur öffentlichen Multi-Liga-Plattform **Kicker Leagues**.
+Tischkicker-Liga-Plattform (Elo · 2v2 · Awards · Badges · Liga-News):
+Nutzer erstellen eigene Ligen, laden Freunde per Code/Link ein und nutzen
+mehrere Ligen parallel — die Liga ist das zentrale Objekt, Accounts sind
+optional, Spieler gehören zur Liga (nie zu einem Login).
 Der vollständige Plan liegt in [`docs/KICKER_LEAGUES_PLAN.md`](docs/KICKER_LEAGUES_PLAN.md).
 
-## Stand: Phase 0 (Modularisierung, keine Verhaltensänderung)
+## Stand: Phase 1 (Plattform-Kern)
 
-Die historische Single-File-App (`legacy/index.html`, ~18.800 Zeilen) ist in
-ein Vite-Projekt zerlegt — **verlustfrei und pixelidentisch verifiziert**:
+- **Plattform-Ebene** (`src/legacy/001b-platform-…`): stiller anonymer
+  Sign-in (Supabase Anonymous Auth), Home-Screen (Meine Ligen / Erstellen /
+  Beitreten), Join-Links `…#join=CODE`, Share-Sheet, letzte Liga öffnet
+  automatisch (Back-Chevron führt zur Übersicht).
+- **Multi-Liga-Datenschicht**: alle Queries auf `league_id` gescopt,
+  Elo-Parameter pro Liga in `leagues.settings` (config-Tabelle entfällt),
+  Stories `(league_id, id)`-gekeyt, Soft-Deletes für Spieler/Matches.
+- **IndexedDB-Cache pro Liga** mit Delta-Sync (`created_at`/`updated_at`);
+  Match-Edits bumpen serverseitig `leagues.rev` → Full-Resync.
+- **Realtime pro Liga** auf `stories` und `matches` (30s-Polling als
+  Fallback). Liga-Wechsel per Reload → garantiert saubere Memo-Caches.
+- **RLS**: Mitgliedschaft ist das einzige Tor zu Liga-Daten; RPCs
+  (`create_league`, `join_league` mit Rate-Limit, `rotate_invite`,
+  `leave_league`), Integritäts-Trigger, Audit-Log.
+  Negativtests: `supabase/tests/rls_negative_tests.sql`.
 
 ```
-index.html            schlanke Shell (Body 1:1 aus dem Original)
-src/styles/app.css    komplettes Stylesheet (Original-CSS, unverändert)
-src/legacy/*.js       36 Module entlang der §-Sektionen des Originals
-src/main.js           Vite-Einstieg (bündelt aktuell nur das CSS)
+index.html               Shell (Home-Container + Liga-App-Markup)
+src/styles/app.css       komplettes Stylesheet
+src/legacy/*.js          37 Module entlang der §-Sektionen (001b = Plattform)
+src/main.js              Vite-Einstieg (bündelt aktuell nur das CSS)
 tools/concat-legacy.mjs  Build-Schritt: fügt src/legacy/ in Original-
                          Reihenfolge zu public/app.js zusammen (klassisches
                          Skript → Hoisting/Globals exakt wie bisher)
-tools/parity-check.mjs   Playwright-Paritätstest Original vs. Build
-supabase/migrations/     DB-Migrationen (Phase-0-Policies, temporär)
-legacy/index.html        das unveränderte Original (Referenz)
+tools/e2e-check.mjs      Playwright-E2E: Erstellen/Beitreten/Delta-Cache
+supabase/migrations/     gesamtes Schema, RLS, RPCs, Trigger als Migrationen
+supabase/tests/          RLS-Negativtest-Suite (SQL, mit Rollback)
+legacy/index.html        die unveränderte Single-File-App (Referenz)
 ```
 
 Die App-Logik läuft bewusst weiter als **ein** klassisches Skript: Die
 Template-Strings nutzen Inline-`onclick`-Handler und modulweite Globals —
 eine ES-Modul-Umstellung wäre eine Verhaltensänderung. Die schrittweise
 Extraktion der Engines (Elo, Awards, Badges, Stories) in echte Module
-passiert ab Phase 1; dafür wird eine Datei aus `src/legacy/` herausgelöst
-und in `tools/concat-legacy.mjs` automatisch nicht mehr mitgebündelt.
+folgt; dafür wird eine Datei aus `src/legacy/` herausgelöst und in
+`tools/concat-legacy.mjs` automatisch nicht mehr mitgebündelt.
+
+**Einmalige Dashboard-Voraussetzung:** In Supabase muss
+Authentication → Sign In / Providers → **„Allow anonymous sign-ins"**
+aktiviert sein, sonst scheitert der Boot mit einer Fehlermeldung.
 
 ## Entwicklung
 
@@ -35,7 +55,7 @@ und in `tools/concat-legacy.mjs` automatisch nicht mehr mitgebündelt.
 npm install
 npm run dev       # Dev-Server (führt vorher den Concat-Schritt aus)
 npm run build     # Produktions-Build nach dist/
-node tools/parity-check.mjs   # Paritätstest (erst `npm run build`)
+node tools/e2e-check.mjs      # E2E-Kernflow (erst `npm run build`)
 ```
 
 supabase-js wird lokal gebündelt (`public/vendor/`, aus node_modules

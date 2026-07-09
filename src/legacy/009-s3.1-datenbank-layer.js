@@ -28,28 +28,65 @@ function gamesPlayed(id){return matches.filter(m=>[m.a1,m.a2,m.b1,m.b2].includes
 let _lastLoadFingerprint = null;
 let _lastLoadDay = null;
 async function loadAll(){
+  if(!LK) return; // PHASE 1: Liga-App lädt nur mit geöffneter Liga (§P)
   setConn('verbinde…','load');
   try{
-    const [p,m,c,se]=await Promise.all([
-      sb.from('players').select('*').order('elo',{ascending:false}),
-      sb.from('matches').select('*').order('created_at',{ascending:true}),
-      sb.from('config').select('*').eq('id',1).single(),
-      sb.from('seasons').select('*').order('start_date',{ascending:false})
+    // Liga-Zeile (settings/rev/name), Spieler und Saisons sind klein →
+    // immer voll laden. Die config-Tabelle ist Geschichte: die Elo-Parameter
+    // leben pro Liga in leagues.settings.
+    const [lg,p,se]=await Promise.all([
+      sb.from('leagues').select('*').eq('id',LK.id).single(),
+      sb.from('players').select('*').eq('league_id',LK.id).is('deleted_at',null).order('elo',{ascending:false}),
+      sb.from('seasons').select('*').eq('league_id',LK.id).order('start_date',{ascending:false})
     ]);
-    if(p.error)throw p.error; if(m.error)throw m.error;
-    const _fp = JSON.stringify([p.data, m.data, c.data, se.data]);
+    if(lg.error)throw lg.error; if(p.error)throw p.error; if(se.error)throw se.error;
+    const serverRev=Number(lg.data.rev||0);
+
+    // Matches: Delta-Sync über created_at/updated_at (IndexedDB-Cache, §P).
+    // Bei rev-Wechsel (Match-Edit/Soft-Delete irgendwo, Trigger bumpt
+    // leagues.rev) ist der lokale Stand nicht vertrauenswürdig → Full-Refetch.
+    const canDelta = LK.rev===serverRev && LK.lastSyncedAt && Array.isArray(matches) && matches.length>0;
+    let mq=sb.from('matches').select('*').eq('league_id',LK.id).is('deleted_at',null);
+    if(canDelta) mq=mq.or(`created_at.gt.${LK.lastSyncedAt},updated_at.gt.${LK.lastSyncedAt}`);
+    const m=await mq.order('created_at',{ascending:true});
+    if(m.error)throw m.error;
+
+    let mergedMatches;
+    if(canDelta){
+      if((m.data||[]).length){
+        // Merge-by-id: neue Zeilen anhängen, editierte (deltas!) ersetzen
+        const byId=new Map(matches.map(x=>[x.id,x]));
+        (m.data||[]).forEach(x=>byId.set(x.id,x));
+        mergedMatches=[...byId.values()].sort((a,b)=>String(a.created_at).localeCompare(String(b.created_at)));
+      } else {
+        mergedMatches=matches;
+      }
+    } else {
+      mergedMatches=m.data||[];
+    }
+    let lastSynced=LK.lastSyncedAt||'';
+    mergedMatches.forEach(x=>{
+      if(x.created_at && x.created_at>lastSynced) lastSynced=x.created_at;
+      if(x.updated_at && x.updated_at>lastSynced) lastSynced=x.updated_at;
+    });
+
+    const _fp = JSON.stringify([p.data, se.data, lg.data.settings, lg.data.name, serverRev, mergedMatches.length, lastSynced]);
     const _today = new Date().toDateString();
+    LK.rev=serverRev;
+    LK.lastSyncedAt=lastSynced||null;
+    LK.name=lg.data.name;
+    LK.settings=lg.data.settings||{};
     if(_fp === _lastLoadFingerprint && _today === _lastLoadDay){
       // Nichts geändert seit dem letzten Tick → UI in Ruhe lassen.
       setConn(activePlayers().length+' Spieler · '+matches.length+' Matches','ok');
+      _ensureMatchesRealtime();
       return;
     }
     _lastLoadFingerprint = _fp;
     _lastLoadDay = _today;
-    // Alle Spieler laden (auch hidden) → für Match-Berechnungen nötig
+    // Alle (nicht gelöschten) Spieler laden, auch hidden → für Berechnungen nötig
     players=p.data||[];
-    // Lokaler Fallback: Wenn DB-Spalte avatar_id nicht existiert,
-    // wird Edit aus localStorage übernommen.
+    // Lokaler Fallback: avatar_id-Edits aus localStorage übernehmen
     players.forEach(pp=>{
       if(pp.avatar_id==null){
         try{
@@ -61,42 +98,23 @@ async function loadAll(){
         }catch(err){}
       }
     });
-    matches=m.data||[];
-    if(c.data)cfg=c.data;
-    // localStorage-Overrides für neue cfg-Felder, die noch nicht in der DB-Spalte existieren
-    try{
-      const overrides=JSON.parse(localStorage.getItem('cfg_overrides')||'{}');
-      Object.keys(overrides).forEach(k=>{
-        if(overrides[k]!==undefined && overrides[k]!==null) cfg[k]=overrides[k];
-      });
-      // Auto-Migration: wenn die DB inzwischen die Spalten kennt, Overrides synchronisieren
-      // und localStorage aufräumen. Läuft fire-and-forget im Hintergrund — blockt loadAll nicht.
-      const overrideKeys=Object.keys(overrides);
-      if(overrideKeys.length){
-        (async()=>{
-          // Pro Key einzeln updaten: andere bleiben heile wenn einer fehlschlägt
-          const remaining={};
-          for(const k of overrideKeys){
-            try{
-              const o={};o[k]=overrides[k];
-              const {error}=await sb.from('config').update(o).eq('id',1);
-              if(error) remaining[k]=overrides[k];
-              // Bei !error: Spalte existiert nun → Override darf raus
-            }catch(e){ remaining[k]=overrides[k]; }
-          }
-          try{
-            if(Object.keys(remaining).length) localStorage.setItem('cfg_overrides',JSON.stringify(remaining));
-            else localStorage.removeItem('cfg_overrides');
-          }catch(e){}
-        })();
-      }
-    }catch(e){}
+    matches=mergedMatches;
+    // Elo-Parameter: Code-Defaults + Liga-Settings (ersetzt config-Tabelle
+    // UND das alte cfg_overrides-Muster — neue Parameter brauchen keine
+    // Migration, sie fallen einfach auf ihren Default zurück)
+    cfg=Object.assign({},CFG_DEFAULTS,LK.settings);
     seasons=se.data||[];
   // NEU: Alle relevanten Caches invalidieren
   invalidateCache(['global', 'stats', 'awards', 'teams', 'allTeamStats', 'period', 'badges', 'playerSeasonAwards', 'allPastSeasons']);
     // Nur aktive Spieler zählen für Anzeige
     const active=activePlayers();
     setConn(active.length+' Spieler · '+matches.length+' Matches','ok');
+    // Header aktuell halten (Liga-Umbenennung auf anderem Gerät)
+    const _h1=document.querySelector('#app .logo-txt h1');
+    if(_h1 && _h1.textContent!==LK.name) _h1.textContent=LK.name;
+    // IndexedDB-Cache persistieren (fire-and-forget) + Realtime sicherstellen
+    lkCachePut(LK.id,{players,matches,seasons,rev:serverRev,lastSyncedAt:LK.lastSyncedAt,name:LK.name});
+    _ensureMatchesRealtime();
     await autoArchiveSeasons();
     if(window._updateRecapBtn) window._updateRecapBtn();
     if(window._updatePosHistBtn) window._updatePosHistBtn();
@@ -127,6 +145,8 @@ async function loadAll(){
 
 // Automatischer Saison-Abschluss: archiviert vergangene Monate
 async function autoArchiveSeasons(){
+  // Liga ohne Monatsreset: keine Archive, keine Saison-Recaps
+  if(LK && LK.settings && LK.settings.monthlyReset===false) return;
   const past=allPastSeasons(); // alle vergangenen Saison-IDs
   // gSim einmal pro Aufruf für isStale + Archive nutzen → konsistent
   const gSim=getGlobalSim();
@@ -188,6 +208,7 @@ async function autoArchiveSeasons(){
       .sort((a,b)=>b[1]-a[1]);
     const bestTeam=teamEntries[0]?teamEntries[0][0].split('|'):null;
     const entry={
+      league_id:LK.id,
       id:sid,
       label:seasonLabel(sid),
       start_date:seasonStart(sid).toISOString().slice(0,10),
@@ -197,7 +218,8 @@ async function autoArchiveSeasons(){
       team_p2:bestTeam?bestTeam[1]:null,
       top_elo:JSON.stringify(top.slice(0,3))
     };
-    const{error}=await sb.from('seasons').upsert(entry,{onConflict:'id'});
+    // PK ist jetzt (league_id, id) — idempotenter Multi-Writer-Rollover
+    const{error}=await sb.from('seasons').upsert(entry,{onConflict:'league_id,id'});
     if(!error){
       const existIdx=seasons.findIndex(s=>s.id===sid);
       if(existIdx>=0) seasons[existIdx]=entry; else seasons.unshift(entry);

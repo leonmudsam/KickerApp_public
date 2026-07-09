@@ -135,7 +135,7 @@ function showAddPlayer(){
     <button class="btn" id="confirmAdd" style="margin-top:12px">Hinzufügen</button>`);
   const ni=document.getElementById('newName');ni.focus();
   const go=async()=>{const n=ni.value.trim();if(!n){toast('Name fehlt',true);return;}
-    const{error}=await sb.from('players').insert({name:n,elo:cfg.start_elo,atk:0.5});
+    const{error}=await sb.from('players').insert({league_id:LK.id,name:n,elo:cfg.start_elo,atk:0.5});
     if(error){toast(error.message.includes('duplicate')?'Name existiert':'Fehler',true);return;}
     closeSheet(true);toast('Spieler angelegt','ok');await loadAll();};
   document.getElementById('confirmAdd').onclick=go;

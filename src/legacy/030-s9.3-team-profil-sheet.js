@@ -597,7 +597,9 @@ function showMatchDetail(mid){
   document.getElementById('delThisMatch').onclick=async()=>{
         if(!confirm('Match wirklich löschen? Die gesamte Rangliste wird danach automatisch neu berechnet.'))return;
     closeSheet(true); toast('Lösche & berechne neu…');
-    await sb.from('matches').delete().eq('id',mid);
+    // PHASE 1: Soft-Delete (RLS verbietet hartes DELETE); der Trigger bumpt
+    // leagues.rev → andere Geräte machen einen Full-Resync
+    await sb.from('matches').update({deleted_at:new Date().toISOString()}).eq('id',mid);
     const rest=matches.filter(x=>x.id!==mid);
     invalidateCache(['global', 'stats', 'awards', 'teams', 'period', 'badges']); // <-- HIER INVALIDIEREN
     await persistRecalc(rest);

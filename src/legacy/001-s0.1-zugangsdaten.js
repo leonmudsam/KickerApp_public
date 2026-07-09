@@ -10,7 +10,7 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 if(SUPABASE_URL.startsWith("HIER")||SUPABASE_KEY.startsWith("HIER")){
   document.getElementById('setupGate').style.display='block'; return;
 }
-document.getElementById('app').style.display='block';
-document.getElementById('botnav').style.display='flex';
+// PHASE 1: Sichtbarkeit steuert die Plattform-Ebene (§P) — Home-Screen
+// zuerst, #app/#botnav erst wenn eine Liga geöffnet ist.
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 

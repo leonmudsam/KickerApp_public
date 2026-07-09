@@ -131,8 +131,10 @@ async function persistRecalc(matchList){
   // Archivierte Saison-Snapshots invalidieren → autoArchiveSeasons wird sie neu schreiben
   // (mit den frisch berechneten DB-Deltas → konsistent zu Profil/Recap).
   const pastIds = allPastSeasons();
+  // seasons-PK ist (league_id, id) → ohne league_id-Scope würden gleichnamige
+  // Saisons ANDERER Ligen getroffen, in denen der User auch Mitglied ist
   const wipeArchives = pastIds.map(sid =>
-    sb.from('seasons').update({top_elo: JSON.stringify([])}).eq('id', sid)
+    sb.from('seasons').update({top_elo: JSON.stringify([])}).eq('league_id', LK.id).eq('id', sid)
   );
   await runBatch(wipeArchives);
   // Lokal: top_elo leeren, damit autoArchiveSeasons sie als stale erkennt

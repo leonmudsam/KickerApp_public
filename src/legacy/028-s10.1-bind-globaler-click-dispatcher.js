@@ -275,39 +275,23 @@ function bindSlider(id,key,toState,toLabel){
   sl.onchange=async()=>{
     const newVal=toState(+sl.value);
     const o={};o[key]=newVal;
-    // Lokales State sofort updaten (synchron) damit die Vorschau & nächster Match-Save den
-    // neuen Wert sieht. DB- und localStorage-Persistenz folgt asynchron.
+    // Lokales State sofort updaten (synchron) damit die Vorschau & nächster
+    // Match-Save den neuen Wert sieht. Persistenz folgt asynchron.
     cfg[key]=newVal;
     invalidateCache();
-    // DB-Update versuchen
+    // PHASE 1: Die Parameter leben pro Liga in leagues.settings (JSONB) —
+    // das alte cfg_overrides-Muster (fehlende DB-Spalten) ist damit obsolet.
     let dbOk=false;
     try{
-      const {error}=await sb.from('config').update(o).eq('id',1);
-      if(!error) dbOk=true;
-      else console.warn('Config DB-Update fehlgeschlagen für',key,':',error.message);
+      const ns=Object.assign({},(LK&&LK.settings)||{});
+      ns[key]=newVal;
+      const {error}=await sb.from('leagues').update({settings:ns}).eq('id',LK.id);
+      if(!error){ dbOk=true; LK.settings=ns; }
+      else console.warn('Settings-Update fehlgeschlagen für',key,':',error.message);
     }catch(e){
-      console.warn('Config DB-Update Exception:',e);
+      console.warn('Settings-Update Exception:',e);
     }
-    // localStorage-Fallback (z.B. neue Spalten die noch nicht in DB existieren)
-    // Diese Overrides werden bei loadAll auf das DB-cfg geschmolzen.
-    if(!dbOk){
-      try{
-        const overrides=JSON.parse(localStorage.getItem('cfg_overrides')||'{}');
-        overrides[key]=newVal;
-        localStorage.setItem('cfg_overrides',JSON.stringify(overrides));
-      }catch(e){}
-    } else {
-      // Wenn DB jetzt klappt: alten localStorage-Override entfernen (sonst überschreibt
-      // er bei loadAll den frischen DB-Wert).
-      try{
-        const overrides=JSON.parse(localStorage.getItem('cfg_overrides')||'{}');
-        if(key in overrides){
-          delete overrides[key];
-          localStorage.setItem('cfg_overrides',JSON.stringify(overrides));
-        }
-      }catch(e){}
-    }
-    toast(dbOk?'Gespeichert':'Lokal gespeichert','ok');
+    toast(dbOk?'Gespeichert':'Speichern fehlgeschlagen',dbOk?'ok':true);
   };
 }
 

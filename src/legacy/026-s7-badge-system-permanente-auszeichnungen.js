@@ -2343,7 +2343,9 @@ const rankProgHtml = rInfo ? `
       };
       document.getElementById('deletePlayerBtn').onclick=async()=>{
         if(!confirm('Wirklich komplett löschen? Namen erscheinen dann als "?" in allen Matches.')) return;
-        await sb.from('players').delete().eq('id',id);
+        // PHASE 1: Soft-Delete — Historie referenziert Spieler weiterhin,
+        // RLS erlaubt kein hartes DELETE (Plan §5)
+        await sb.from('players').update({deleted_at:new Date().toISOString()}).eq('id',id);
         closeSheet(true); toast('Gelöscht'); await loadAll();
       };
       document.getElementById('cancelDelBtn').onclick=()=>{
@@ -2351,7 +2353,7 @@ const rankProgHtml = rInfo ? `
       };
     } else {
       if(!confirm(`Spieler "${p.name}" löschen?`)) return;
-      await sb.from('players').delete().eq('id',id);
+      await sb.from('players').update({deleted_at:new Date().toISOString()}).eq('id',id);
       closeSheet(true); toast('Gelöscht'); await loadAll();
     }
   };

@@ -77,6 +77,7 @@ async function doSaveMatch(){
   const c = computeMatch(teamA, teamB, winner, M.sa, M.sb);
 
   const row = {
+    league_id: LK.id,
     a1:M.A1, a1_pos:M.pA1, a2:M.A2, a2_pos:M.pA2,
     b1:M.B1, b1_pos:M.pB1, b2:M.B2, b2_pos:M.pB2,
     score_a:M.sa, score_b:M.sb, winner, deltas:c.res, exp_a:c.expA
