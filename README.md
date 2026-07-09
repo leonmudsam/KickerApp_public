@@ -1,1 +1,1 @@
-# KickerApp_public
+# kicker-app
