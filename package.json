@@ -1,0 +1,19 @@
+{
+  "name": "kicker-leagues",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "concat": "node tools/concat-legacy.mjs",
+    "dev": "npm run concat && vite",
+    "build": "npm run concat && vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "playwright": "^1.61.1",
+    "vite": "^6.3.5"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.2"
+  }
+}
