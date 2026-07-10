@@ -104,7 +104,7 @@ function mockFor(uid){
         const lg = { id: randomUUID(), name: body.p_name, settings: body.p_settings || {},
                      join_enabled: true, rev: 0, deleted_at: null, created_at: new Date().toISOString() };
         state.leagues.push(lg);
-        state.members.push({ league_id: lg.id, user_id: uid, role: 'owner' });
+        state.members.push({ league_id: lg.id, user_id: uid, role: 'owner', joined_at: new Date().toISOString() });
         state.invites.push({ league_id: lg.id, code: INVITE_CODE, revoked_at: null });
         return json({ league: lg, invite_code: INVITE_CODE });
       }
@@ -114,8 +114,33 @@ function mockFor(uid){
         if(!inv) return json({ error: 'invalid_code' });
         const lg = state.leagues.find(l => l.id === inv.league_id);
         const already = state.members.some(m => m.league_id === lg.id && m.user_id === uid);
-        if(!already) state.members.push({ league_id: lg.id, user_id: uid, role: 'member' });
+        if(!already) state.members.push({ league_id: lg.id, user_id: uid, role: 'member', joined_at: new Date().toISOString() });
         return json({ league: lg, already_member: already });
+      }
+      if(fn === 'rotate_invite'){
+        state.invites.forEach(i => { if(i.league_id === body.p_league_id && !i.revoked_at) i.revoked_at = new Date().toISOString(); });
+        const c = 'KLROTATED0';
+        state.invites.push({ league_id: body.p_league_id, code: c, revoked_at: null });
+        return json(c);
+      }
+      if(fn === 'leave_league'){
+        const idx = state.members.findIndex(m => m.league_id === body.p_league_id && m.user_id === uid);
+        if(idx >= 0){
+          const me = state.members[idx];
+          const others = state.members.some(m => m.league_id === body.p_league_id && m.user_id !== uid);
+          if(me.role === 'owner' && others) return json({ message: 'owner_must_transfer_or_close' }, 400);
+          if(me.role === 'owner') state.leagues.find(l => l.id === body.p_league_id).deleted_at = new Date().toISOString();
+          state.members.splice(idx, 1);
+          state.players.forEach(p => { if(p.league_id === body.p_league_id && p.claimed_by === uid) p.claimed_by = null; });
+        }
+        return json(null);
+      }
+      if(fn === 'close_league'){
+        const me = state.members.find(m => m.league_id === body.p_league_id && m.user_id === uid);
+        if(!me || me.role !== 'owner') return json({ message: 'forbidden' }, 400);
+        state.leagues.find(l => l.id === body.p_league_id).deleted_at = new Date().toISOString();
+        state.invites.forEach(i => { if(i.league_id === body.p_league_id) i.revoked_at = new Date().toISOString(); });
+        return json(null);
       }
       return json(null);
     }
@@ -124,6 +149,8 @@ function mockFor(uid){
     const m = url.pathname.match(/\/rest\/v1\/([a-z_]+)/);
     if(!m) return route.fulfill({ status: 404, body: '' });
     const table = m[1];
+    // State-Keys weichen z. T. vom Tabellennamen ab
+    const store = table === 'league_invites' ? 'invites' : table === 'league_members' ? 'members' : table;
     const params = url.searchParams;
     const accept = req.headers()['accept'] || '';
     const wantObject = accept.includes('vnd.pgrst.object');
@@ -136,7 +163,7 @@ function mockFor(uid){
           .map(r => ({ role: r.role, leagues: state.leagues.find(l => l.id === r.league_id) }));
         return json(rows);
       }
-      let rows = rowsFor(table === 'league_invites' ? 'invites' : table);
+      let rows = rowsFor(store);
       // RLS-Nachbildung: nur Zeilen der eigenen Ligen
       if(table !== 'leagues') rows = rows.filter(r => !r.league_id || myLeagues.has(r.league_id));
       else rows = rows.filter(r => myLeagues.has(r.id));
@@ -148,7 +175,7 @@ function mockFor(uid){
     if(method === 'POST'){
       let body; try{ body = JSON.parse(req.postData() || '[]'); }catch(e){ body = []; }
       const arr = Array.isArray(body) ? body : [body];
-      const target = rowsFor(table);
+      const target = rowsFor(store);
       const inserted = [];
       for(const row of arr){
         const conflictCols = (params.get('on_conflict') || '').split(',').filter(Boolean);
@@ -170,7 +197,7 @@ function mockFor(uid){
     }
     if(method === 'PATCH'){
       let body; try{ body = JSON.parse(req.postData() || '{}'); }catch(e){ body = {}; }
-      const rows = applyFilters(rowsFor(table), params);
+      const rows = applyFilters(rowsFor(store), params);
       rows.forEach(r => {
         Object.assign(r, body);
         if(table === 'matches'){
@@ -182,8 +209,8 @@ function mockFor(uid){
       return route.fulfill({ status: 204, body: '' });
     }
     if(method === 'DELETE'){
-      const doomed = new Set(applyFilters(rowsFor(table), params));
-      state[table] = rowsFor(table).filter(r => !doomed.has(r));
+      const doomed = new Set(applyFilters(rowsFor(store), params));
+      state[store] = rowsFor(store).filter(r => !doomed.has(r));
       return route.fulfill({ status: 204, body: '' });
     }
     return route.fulfill({ status: 204, body: '' });
@@ -257,13 +284,17 @@ async function newDevice(name, uid){
   return { ctx, page };
 }
 
-// ── Gerät A: Home → Liga erstellen ──
+// ── Gerät A: Home → Liga erstellen (Formular hinter Aufklapp-Button) ──
 const A = await newDevice('A', 'aaaaaaaa-0000-4000-8000-000000000001');
 await A.page.goto(APP, { waitUntil: 'load' });
 await A.page.waitForSelector('#home', { state: 'visible', timeout: 15000 });
-check(await A.page.isVisible('#lkCreateBtn'), 'Gerät A: Home-Screen sichtbar (keine Liga)');
-check((await A.page.textContent('#home')).includes('Noch keine Liga'), 'Gerät A: Empty-State');
+check(await A.page.isVisible('#homeCreateToggle'), 'Gerät A: Home-Screen sichtbar (keine Liga)');
+check((await A.page.textContent('#home')).includes('Willkommen'), 'Gerät A: Empty-State (neues Design)');
+check(await A.page.isVisible('#homeLoginToggle'), 'Gerät A: Konto-Bereich (Login-Option) auf Home');
+check(await A.page.isHidden('#homeCreateBox'), 'Gerät A: Erstellen-Formular initial zugeklappt');
 
+await A.page.click('#homeCreateToggle');
+await A.page.waitForSelector('#homeCreateBox', { state: 'visible', timeout: 5000 });
 await A.page.fill('#lkNewName', 'Testliga');
 await A.page.click('#lkCreateBtn');
 await A.page.waitForSelector('#app', { state: 'visible', timeout: 15000 });
@@ -297,15 +328,70 @@ await A.page.waitForFunction(() => (document.getElementById('main').innerText ||
 const deltaQ = state.queryLog.find(q => q.includes('/matches') && q.includes('or=') && q.includes('created_at.gt.'));
 check(!!deltaQ, 'Gerät A: 2. Reload lädt Matches per Delta-Query (IndexedDB-Cache aktiv)');
 
-// ── Gerät B: Beitritt per Invite-Link ──
+// ── Gerät B: Beitritt per Invite-Link → Claim-Onboarding ──
 const B = await newDevice('B', 'bbbbbbbb-0000-4000-8000-000000000002');
+B.page.on('dialog', d => d.accept());
 await B.page.goto(APP + '#join=' + INVITE_CODE, { waitUntil: 'load' });
 await B.page.waitForSelector('#app', { state: 'visible', timeout: 15000 });
 await B.page.waitForFunction(() => (document.getElementById('main').innerText || '').includes('Anna'), null, { timeout: 15000 });
 check(state.members.some(m => m.user_id.startsWith('bbbbbbbb')), 'Server: Gerät B ist Mitglied');
+
+// PHASE 2: Nach frischem Beitritt öffnet sich "Welcher Spieler bist du?"
+await B.page.waitForSelector('#sheet.show', { state: 'visible', timeout: 15000 });
+const claimTxt = await B.page.evaluate(() => document.getElementById('sheet').innerText);
+check(claimTxt.includes('Welcher Spieler bist du'), 'Gerät B: Claim-Onboarding erscheint nach Beitritt');
+await B.page.screenshot({ path: join(outDir, 'e2e-B-claim.png') });
+await B.page.click('#sheet [data-claim]'); // erster Spieler: "Das bin ich"
+await B.page.waitForFunction(() => !document.getElementById('sheetBg').classList.contains('show'), null, { timeout: 15000 });
+check(state.players.some(p => p.claimed_by && p.claimed_by.startsWith('bbbbbbbb')), 'Server: Claim gesetzt (claimed_by)');
+
+await B.page.waitForFunction(() => (document.getElementById('main').innerText || '').includes('Anna'), null, { timeout: 15000 });
 const rankingB = await B.page.evaluate(() => document.getElementById('main').innerText);
 await B.page.screenshot({ path: join(outDir, 'e2e-B-ranking.png') });
 check(rankingB === viewsA.ranking, 'Gerät B: Rangliste identisch zu Gerät A');
+
+// ── Gerät A: Einstellungen — offen für Mitglieder, rollenbasierte Bereiche ──
+// Reload, damit A den frischen Claim von B in players hat (sonst würde erst
+// das 30s-Polling die Mitglieder-Labels aktualisieren)
+await A.page.reload({ waitUntil: 'load' });
+await A.page.waitForSelector('#app', { state: 'visible', timeout: 15000 });
+await A.page.waitForFunction(() => /Spieler · /.test(document.getElementById('connText').textContent), null, { timeout: 15000 });
+await A.page.click('#settingsBtn');
+await A.page.waitForFunction(() => (document.getElementById('main').innerText || '').includes('Einstellungen'), null, { timeout: 15000 });
+check(!(await A.page.$('#settingsLockOverlay')), 'Gerät A: kein Passwort-Lock mehr');
+await A.page.waitForFunction(() => (document.getElementById('lkInviteBox') || {}).innerText && document.getElementById('lkInviteBox').innerText.includes('KL7TESTCO'), null, { timeout: 15000 });
+check(true, 'Gerät A: Einladungscode im Settings-Tab sichtbar');
+await A.page.waitForFunction(() => ((document.getElementById('lkMembersBox') || {}).innerText || '').includes('Du'), null, { timeout: 15000 });
+const membersTxt = await A.page.evaluate(() => document.getElementById('lkMembersBox').innerText);
+check(membersTxt.includes('Gründer') && membersTxt.includes('Mitglied'), 'Gerät A: Mitgliederliste zeigt Rollen (Gründer + Mitglied)');
+check(membersTxt.includes('Anna'), 'Gerät A: Claim von Gerät B in Mitgliederliste sichtbar');
+check(!!(await A.page.$('#cfgK')), 'Gerät A (Gründer): Formel-Slider sichtbar');
+check(!!(await A.page.$('#lkCloseBtn')), 'Gerät A (Gründer): "Liga schließen" vorhanden');
+check(!!(await A.page.$('#lkAuditBtn')), 'Gerät A (Gründer): Audit-Log-Zugang vorhanden');
+await A.page.screenshot({ path: join(outDir, 'e2e-A-settings.png'), fullPage: true });
+
+// Audit-Log-Sheet öffnet (Claim von B ist der jüngste Eintrag im Mock nicht
+// geloggt — es geht nur um Render + keine Fehler)
+await A.page.click('#lkAuditBtn');
+await A.page.waitForFunction(() => (document.getElementById('sheet').innerText || '').includes('Änderungsprotokoll'), null, { timeout: 15000 });
+check(true, 'Gerät A: Audit-Log-Sheet rendert');
+await A.page.mouse.click(210, 30); // Backdrop-Klick schließt das Sheet
+await A.page.waitForFunction(() => !document.getElementById('sheetBg').classList.contains('show'), null, { timeout: 15000 });
+
+// ── Gerät B: Einstellungen als einfaches Mitglied — keine Admin-Bereiche ──
+await B.page.click('#settingsBtn');
+await B.page.waitForFunction(() => (document.getElementById('main').innerText || '').includes('Einstellungen'), null, { timeout: 15000 });
+check(!(await B.page.$('#cfgK')), 'Gerät B (Mitglied): keine Formel-Slider');
+check(!(await B.page.$('#lkCloseBtn')), 'Gerät B (Mitglied): kein "Liga schließen"');
+check(!(await B.page.$('#lkAuditBtn')), 'Gerät B (Mitglied): kein Audit-Zugang');
+check(!!(await B.page.$('#lkEmailSendBtn')), 'Gerät B: Konto-Bereich (E-Mail verknüpfen) vorhanden');
+await B.page.screenshot({ path: join(outDir, 'e2e-B-settings.png'), fullPage: true });
+
+// ── Gerät B: Liga verlassen → Home; Claim serverseitig freigegeben ──
+await B.page.click('#lkLeaveBtn');
+await B.page.waitForSelector('#home', { state: 'visible', timeout: 15000 });
+check(!state.members.some(m => m.user_id.startsWith('bbbbbbbb')), 'Server: Gerät B nach Verlassen kein Mitglied mehr');
+check(!state.players.some(p => p.claimed_by && p.claimed_by.startsWith('bbbbbbbb')), 'Server: Claim beim Verlassen freigegeben');
 
 // ── Gerät A: Zurück zur Liga-Übersicht ──
 await A.page.click(`#botnav button[data-nav="ranking"]`);

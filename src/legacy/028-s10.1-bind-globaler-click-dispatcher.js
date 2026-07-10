@@ -198,7 +198,8 @@ function bind(){
   };
   const forceReloadBtn=document.getElementById('forceReloadBtn');
   if(forceReloadBtn) forceReloadBtn.onclick=forceReload;
-    // lockBtn2 entfernt
+  // PHASE 2: Liga-/Mitglieder-/Konto-Bereiche im Einstellungen-Tab
+  if(tab==='settings' && typeof bindLeagueSettings==='function') bindLeagueSettings();
 
   // Ausgeblendete Spieler wieder einblenden
   document.querySelectorAll('[data-unhide]').forEach(btn=>btn.onclick=async()=>{
