@@ -25,6 +25,9 @@ Der vollständige Plan liegt in [`docs/KICKER_LEAGUES_PLAN.md`](docs/KICKER_LEAG
   Rollen-Änderungen mit Zeit + Verursacher.
 - **Home-Screen v2**: mobile-first, aufklappbare Erstellen/Beitreten-
   Aktionen, Rollen-Badges auf Liga-Karten, Konto-Bereich.
+- **Spieler-Onboarding**: nach dem Erstellen einer Liga öffnet sich ein
+  schließbares Popup, das mehrere Spieler nacheinander anlegt und danach
+  direkt in den Claim-Flow führt. Start-Elo-Standard ist 0.
 - **Badge-Fix**: Elo-Schwellen (Aufsteiger/Dominator/Dynastie) sind jetzt
   relativ zum Liga-Start-Elo statt absolut.
 

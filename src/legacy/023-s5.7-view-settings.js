@@ -121,7 +121,7 @@ function vSettings(){
       <div class="mini-label">App-Version</div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:10px">
         <div style="font-size:12px;color:var(--ink2);font-family:'Sometype Mono',monospace">${BUILD_VERSION}</div>
-        <button class="btn ghost sm" id="forceReloadBtn" style="padding:7px 12px;font-size:11px;flex-shrink:0">Cache leeren &amp; neu laden</button>
+        <button class="btn ghost sm fit" id="forceReloadBtn" style="padding:7px 12px;font-size:11px;white-space:normal">Cache leeren &amp; neu laden</button>
       </div>
       <p style="font-size:11px;color:var(--muted);line-height:1.55;margin-top:10px">
         Falls neue Features nicht erscheinen, ist meist der iOS-PWA-/Browser-Cache schuld. Der Button erzwingt einen Frischen Load. Außerdem checkt die App im Hintergrund auf neue Versionen und blendet oben einen Banner ein.
@@ -137,7 +137,7 @@ function vSettings(){
               ${avHtml(p,'width:32px;height:32px;border-radius:9px;font-size:11px')}
               <span style="font-weight:600">${esc(p.name)}</span>
             </div>
-            <button data-unhide="${p.id}" class="btn ghost sm" style="padding:7px 12px;font-size:11px">Einblenden</button>
+            <button data-unhide="${p.id}" class="btn ghost sm fit" style="padding:7px 12px;font-size:11px">Einblenden</button>
           </div>`).join('')}
       </div>
     </div>`:''}

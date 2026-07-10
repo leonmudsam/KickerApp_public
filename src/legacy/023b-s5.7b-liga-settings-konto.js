@@ -31,7 +31,7 @@ function vLeagueSettings(){
       <div style="display:flex;gap:8px;margin-top:8px">
         <input id="lkRenameInp" type="text" maxlength="60" value="${esc(LK?LK.name:'')}" ${admin?'':'disabled'}
           style="${_LK_INPUT_STYLE};flex:1">
-        ${admin?'<button class="btn ghost sm" id="lkRenameBtn" style="flex-shrink:0">Speichern</button>':''}
+        ${admin?'<button class="btn ghost sm fit" id="lkRenameBtn">Speichern</button>':''}
       </div>
       <div class="field-label" style="margin-top:16px">Einladung</div>
       <div id="lkInviteBox" style="margin-top:8px;font-size:13px;color:var(--muted)">Lade…</div>
@@ -86,7 +86,7 @@ function vAccountSection(){
         Deine Ligen sind gesichert — melde dich auf jedem Gerät mit dieser
         E-Mail an.
       </p>
-      <button class="btn ghost sm" id="lkLogoutBtn">Abmelden</button>`;
+      <button class="btn ghost sm fit" id="lkLogoutBtn">Abmelden</button>`;
   }
   return `
     <p style="font-size:12px;color:var(--ink2);line-height:1.55;margin:0 0 10px">
@@ -98,7 +98,7 @@ function vAccountSection(){
       <div style="display:flex;gap:8px">
         <input id="lkEmailInp" type="email" placeholder="deine@email.de" autocomplete="email"
           style="${_LK_INPUT_STYLE};flex:1">
-        <button class="btn ghost sm" id="lkEmailSendBtn" style="flex-shrink:0">Code senden</button>
+        <button class="btn ghost sm fit" id="lkEmailSendBtn">Code senden</button>
       </div>
     </div>
     <div id="lkEmailStep2" style="display:none;margin-top:10px">
@@ -108,7 +108,7 @@ function vAccountSection(){
       <div style="display:flex;gap:8px">
         <input id="lkOtpInp" type="text" inputmode="numeric" maxlength="6" placeholder="123456"
           style="${_LK_INPUT_STYLE};flex:1;letter-spacing:4px;text-align:center">
-        <button class="btn sm" id="lkOtpBtn" style="flex-shrink:0">Bestätigen</button>
+        <button class="btn sm fit" id="lkOtpBtn">Bestätigen</button>
       </div>
     </div>`;
 }
@@ -226,8 +226,8 @@ async function _lkFillInviteBox(){
   box.innerHTML=`
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <span class="num" style="font-size:17px;letter-spacing:2px;background:var(--surface3);padding:8px 12px;border-radius:10px">${code?esc(code):'—'}</span>
-      <button class="btn ghost sm" id="lkShareBtn2">Teilen</button>
-      ${admin?'<button class="btn ghost sm" id="lkRotateBtn">Neuer Code</button>':''}
+      <button class="btn ghost sm fit" id="lkShareBtn2">Teilen</button>
+      ${admin?'<button class="btn ghost sm fit" id="lkRotateBtn">Neuer Code</button>':''}
     </div>
     ${admin?`<label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-size:12px;color:var(--ink2)">
       <input id="lkJoinToggle" type="checkbox" ${LK._joinEnabled!==false?'checked':''} style="width:18px;height:18px">
@@ -279,9 +279,9 @@ async function _lkFillMembersBox(){
         </div>
         <div style="font-size:11px;color:var(--muted)">${_lkRoleLabel(m.role)}${since?' · seit '+since:''}</div>
       </div>
-      ${canRole?`<button class="btn ghost sm" data-lkrole="${m.user_id}|${m.role==='admin'?'member':'admin'}" style="padding:6px 10px;font-size:11px">${m.role==='admin'?'Zu Mitglied':'Zu Admin'}</button>
-      <button class="btn ghost sm" data-lktransfer="${m.user_id}" style="padding:6px 10px;font-size:11px">Gründer</button>`:''}
-      ${canKick?`<button class="btn ghost sm" data-lkkick="${m.user_id}" style="padding:6px 10px;font-size:11px;color:var(--red)">Entfernen</button>`:''}
+      ${canRole?`<button class="btn ghost sm fit" data-lkrole="${m.user_id}|${m.role==='admin'?'member':'admin'}" style="padding:6px 10px;font-size:11px">${m.role==='admin'?'Zu Mitglied':'Zu Admin'}</button>
+      <button class="btn ghost sm fit" data-lktransfer="${m.user_id}" style="padding:6px 10px;font-size:11px">Gründer</button>`:''}
+      ${canKick?`<button class="btn ghost sm fit" data-lkkick="${m.user_id}" style="padding:6px 10px;font-size:11px;color:var(--red)">Entfernen</button>`:''}
     </div>`;
   }).join('') || '<div class="empty">Keine Mitglieder</div>';
 
@@ -309,6 +309,67 @@ async function _lkFillMembersBox(){
     if(error){ toast('Entfernen fehlgeschlagen: '+error.message, true); return; }
     toast('Mitglied entfernt','ok'); _lkFillMembersBox();
   });
+}
+
+// ─── Spieler-Onboarding: Popup nach dem Erstellen einer Liga ─────────────
+// Flag setzt der Create-Flow (001b); erscheint einmalig, ist schließbar
+// (Backdrop/Swipe/„Fertig") und legt beliebig viele Spieler nacheinander an.
+// true = Sheet wurde gezeigt (dann kein Claim-Onboarding im selben loadAll).
+function maybeShowPlayerOnboarding(){
+  if(!LK || !_authUser) return false;
+  let flag=null;
+  try{ flag=localStorage.getItem('pendingPlayers_'+LK.id); }catch(e){}
+  if(!flag) return false;
+  try{ localStorage.removeItem('pendingPlayers_'+LK.id); }catch(e){}
+  if(players.length) return false;                           // gibt schon Spieler
+  showAddPlayersSheet();
+  return true;
+}
+
+function showAddPlayersSheet(){
+  if(!LK) return;
+  openSheet(`
+    <div style="padding:4px 18px 24px">
+      <h3 style="margin:10px 0 4px;font-size:17px">Spieler anlegen</h3>
+      <p style="font-size:12px;color:var(--muted);line-height:1.5;margin:0 0 12px">
+        Leg alle Mitspieler deiner Runde an — jeder startet bei ${cfg.start_elo} Elo.
+        Später geht das jederzeit über die Rangliste.
+      </p>
+      <div id="obPlayerList" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px"></div>
+      <div style="display:flex;gap:8px">
+        <input id="obNameInp" type="text" maxlength="40" placeholder="Name…" autocomplete="off"
+          style="${_LK_INPUT_STYLE};flex:1">
+        <button class="btn sm fit" id="obAddBtn">Hinzufügen</button>
+      </div>
+      <button class="btn ghost" id="obDoneBtn" style="width:100%;margin-top:14px">Fertig</button>
+    </div>`, {protectMs:800});
+  const inp=document.getElementById('obNameInp');
+  const list=document.getElementById('obPlayerList');
+  const addBtn=document.getElementById('obAddBtn');
+  const names=[];
+  const add=async()=>{
+    const n=inp.value.trim();
+    if(!n){ inp.focus(); return; }
+    addBtn.disabled=true;
+    const { error }=await sb.from('players').insert({ league_id:LK.id, name:n, elo:cfg.start_elo, atk:0.5 });
+    addBtn.disabled=false;
+    if(error){ toast(error.message&&error.message.includes('duplicate')?'Name existiert schon':'Anlegen fehlgeschlagen', true); return; }
+    names.push(n);
+    list.innerHTML=names.map(x=>`<span style="background:var(--surface3);border:1px solid var(--line);border-radius:9px;padding:6px 10px;font-size:12px;font-weight:600">${esc(x)}</span>`).join('');
+    inp.value=''; inp.focus();
+    // Hintergrund (Rangliste) mitziehen — Sheet bleibt offen, loadAll ist
+    // dank Delta-Sync billig und fasst offene Sheets nicht an
+    loadAll();
+  };
+  addBtn.onclick=add;
+  inp.onkeydown=e=>{ if(e.key==='Enter') add(); };
+  inp.focus();
+  document.getElementById('obDoneBtn').onclick=async()=>{
+    closeSheet(true);
+    await loadAll();
+    // direkt in den Claim-Flow: „Welcher Spieler bist du?" (Plan §3)
+    if(names.length && _authUser && !players.some(p=>p.claimed_by===_authUser.id)) showClaimSheet(true);
+  };
 }
 
 // ─── Claim-Flow: „Welcher Spieler bist du?" ──────────────────────────────
@@ -339,8 +400,8 @@ function showClaimSheet(onboarding){
         ${taken?'<div style="font-size:11px;color:var(--muted)">bereits vergeben</div>':''}
       </div>
       ${isMine
-        ? `<button class="btn ghost sm" data-unclaim="${p.id}" style="font-size:11px;padding:6px 10px">Freigeben</button>`
-        : `<button class="btn ghost sm" data-claim="${p.id}" data-taken="${taken?1:0}" style="font-size:11px;padding:6px 10px">${taken?'Übernehmen':'Das bin ich'}</button>`}
+        ? `<button class="btn ghost sm fit" data-unclaim="${p.id}" style="font-size:11px;padding:6px 10px">Freigeben</button>`
+        : `<button class="btn ghost sm fit" data-claim="${p.id}" data-taken="${taken?1:0}" style="font-size:11px;padding:6px 10px">${taken?'Übernehmen':'Das bin ich'}</button>`}
     </div>`;
   }).join('');
   openSheet(`

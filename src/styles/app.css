@@ -395,6 +395,10 @@
   .btn:disabled{opacity:.35;box-shadow:none;cursor:not-allowed}
   .btn.ghost{background:var(--surface);color:var(--ink2);border:1px solid var(--line);box-shadow:none}
   .btn.sm{padding:12px;font-size:13px}
+  /* .fit: Button in einer Flex-Zeile neben Text/Input — schrumpft auf
+     Inhaltsbreite statt der width:100%-Basis (die in Flex-Rows ohne
+     flex-basis den Nachbarn erdrückt bzw. aus dem Viewport läuft). */
+  .btn.fit{width:auto;flex-shrink:0;white-space:nowrap}
   .btn-row{display:flex;gap:10px}
 
   /* ============ [§C8] AWARDS ============ */

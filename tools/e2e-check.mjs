@@ -301,6 +301,22 @@ await A.page.waitForSelector('#app', { state: 'visible', timeout: 15000 });
 await A.page.waitForFunction(() => document.getElementById('connText').textContent.includes('Spieler'), null, { timeout: 15000 });
 check((await A.page.textContent('#app .logo-txt h1')) === 'Testliga', 'Gerät A: Liga geöffnet, Header = Liganame');
 check(state.leagues.length === 1 && state.members.length === 1, 'Server: Liga + Owner-Membership angelegt');
+check(state.leagues[0].settings.start_elo === 0, 'Server: Start-Elo-Default ist 0');
+
+// ── Spieler-Onboarding: Popup nach Erstellung, mehrere Spieler, schließbar ──
+await A.page.waitForSelector('#sheet.show', { state: 'visible', timeout: 15000 });
+check((await A.page.evaluate(() => document.getElementById('sheet').innerText)).includes('Spieler anlegen'),
+  'Gerät A: Spieler-Onboarding-Popup nach Liga-Erstellung');
+await A.page.fill('#obNameInp', 'Zoe');
+await A.page.click('#obAddBtn');
+await A.page.waitForFunction(() => (document.getElementById('obPlayerList').innerText || '').includes('Zoe'), null, { timeout: 15000 });
+check(state.players.length === 1 && state.players[0].name === 'Zoe', 'Server: Spieler aus Onboarding angelegt (Sheet bleibt offen)');
+await A.page.click('#obDoneBtn');
+// „Fertig" führt direkt in den Claim-Flow (Plan §3) — A schaut nur zu
+await A.page.waitForFunction(() => (document.getElementById('sheet').innerText || '').includes('Welcher Spieler bist du'), null, { timeout: 15000 });
+check(true, 'Gerät A: Claim-Sheet folgt auf Spieler-Onboarding');
+await A.page.click('#claimSkipBtn');
+await A.page.waitForFunction(() => !document.getElementById('sheetBg').classList.contains('show'), null, { timeout: 15000 });
 
 // ── Server-Seed (Mitspieler tragen Spieler + Matches ein), dann Reload ──
 seedLeague(state.leagues[0].id);
