@@ -12,7 +12,7 @@ let LK = null;
 // Code-Defaults der Elo-Parameter (ehem. Spaltendefaults der config-Tabelle).
 // leagues.settings enthält nur Abweichungen + start_elo/monthlyReset.
 const CFG_DEFAULTS = {
-  k_factor: 32, risk_split: 0.6, pos_swing: 0.45, start_elo: 1000,
+  k_factor: 32, risk_split: 0.6, pos_swing: 0.45, start_elo: 0,
   win_boost: 1.10, mov_loss_damp: 0.5, match_bonus: 1.5, pos_min_games: 3,
   exp_weight: 0.5, new_player_mult: 1.5, new_player_mid_mult: 1.2,
   veteran_damp: 0.85, mov_max_boost: 0.4, exp_protect_max: 0.1,
@@ -191,7 +191,7 @@ function renderHome(leagues){
           <div style="font-weight:700;font-size:14px">Schon ein Konto?</div>
           <div style="font-size:11px;color:var(--muted);margin-top:2px">Ligen von einem anderen Gerät wiederherstellen</div>
         </div>
-        <button class="btn ghost sm" id="homeLoginToggle" style="flex-shrink:0">Anmelden</button>
+        <button class="btn ghost sm fit" id="homeLoginToggle">Anmelden</button>
       </div>
       <div id="homeLoginBox" style="display:none;margin-top:14px">
         <div style="display:flex;flex-direction:column;gap:8px">
@@ -209,7 +209,7 @@ function renderHome(leagues){
         <div style="font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(_authUser.email)}</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">Konto verbunden — Ligen sind gesichert</div>
       </div>
-      <button class="btn ghost sm" id="homeLogoutBtn" style="flex-shrink:0">Abmelden</button>
+      <button class="btn ghost sm fit" id="homeLogoutBtn">Abmelden</button>
     </div>`;
 
   renderHomeShell(`
@@ -226,7 +226,7 @@ function renderHome(leagues){
         style="${_HOME_INPUT};margin:10px 0">
       <div style="display:flex;gap:12px;align-items:flex-end;margin:0 0 14px">
         <label style="flex:1;font-size:12px;color:var(--ink2)">Start-Elo
-          <input id="lkStartElo" type="number" value="1000" min="100" max="5000" step="50"
+          <input id="lkStartElo" type="number" value="0" min="0" max="5000" step="50"
             style="${_HOME_INPUT};padding:10px 12px;margin-top:4px">
         </label>
         <label style="flex:1;font-size:12px;color:var(--ink2);display:flex;gap:8px;align-items:center;padding-bottom:12px">
@@ -271,7 +271,9 @@ function renderHome(leagues){
   createBtn.onclick = async () => {
     const name = document.getElementById('lkNewName').value.trim();
     if(!name){ toast('Bitte einen Liga-Namen eingeben', true); return; }
-    const startElo = parseInt(document.getElementById('lkStartElo').value, 10) || 1000;
+    // Kein ||-Fallback: 0 ist ein gültiger (und der Standard-)Startwert
+    const _se = parseInt(document.getElementById('lkStartElo').value, 10);
+    const startElo = Number.isFinite(_se) ? Math.max(0, _se) : 0;
     const monthly = !!document.getElementById('lkMonthly').checked;
     createBtn.disabled = true;
     const { data, error } = await sb.rpc('create_league', {
@@ -281,6 +283,8 @@ function renderHome(leagues){
     createBtn.disabled = false;
     if(error){ toast('Erstellen fehlgeschlagen: ' + error.message, true); return; }
     toast('Liga erstellt — lade Freunde ein!', 'ok');
+    // Onboarding: nach dem ersten Laden das „Spieler anlegen"-Popup zeigen
+    try{ localStorage.setItem('pendingPlayers_' + data.league.id, '1'); }catch(e){}
     openLeague(Object.assign({ _role: 'owner' }, data.league));
   };
   const joinBtn = document.getElementById('lkJoinBtn');

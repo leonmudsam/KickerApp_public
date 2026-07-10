@@ -130,8 +130,10 @@ async function loadAll(){
     if(window._updateRecapBtn) window._updateRecapBtn();
     if(window._updatePosHistBtn) window._updatePosHistBtn();
     render();
-    // PHASE 2: nach frischem Beitritt einmalig "Welcher Spieler bist du?"
-    if(typeof maybeShowClaimOnboarding==='function') maybeShowClaimOnboarding();
+    // PHASE 2: Onboarding — nach Liga-Erstellung einmalig "Spieler anlegen",
+    // nach frischem Beitritt einmalig "Welcher Spieler bist du?"
+    const _playerOb = typeof maybeShowPlayerOnboarding==='function' && maybeShowPlayerOnboarding();
+    if(!_playerOb && typeof maybeShowClaimOnboarding==='function') maybeShowClaimOnboarding();
     // News-System v8.3: Stories aus DB synchronisieren.
     //   1. Generator erzeugt Story-Objekte aus Live-Daten
     //   2. INSERT ON CONFLICT DO NOTHING in Supabase
