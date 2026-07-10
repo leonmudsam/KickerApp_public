@@ -34,12 +34,23 @@ async function loadAll(){
     // Liga-Zeile (settings/rev/name), Spieler und Saisons sind klein →
     // immer voll laden. Die config-Tabelle ist Geschichte: die Elo-Parameter
     // leben pro Liga in leagues.settings.
-    const [lg,p,se]=await Promise.all([
+    const [lg,p,se,me]=await Promise.all([
       sb.from('leagues').select('*').eq('id',LK.id).single(),
       sb.from('players').select('*').eq('league_id',LK.id).is('deleted_at',null).order('elo',{ascending:false}),
-      sb.from('seasons').select('*').eq('league_id',LK.id).order('start_date',{ascending:false})
+      sb.from('seasons').select('*').eq('league_id',LK.id).order('start_date',{ascending:false}),
+      sb.from('league_members').select('role').eq('league_id',LK.id).eq('user_id',_authUser?_authUser.id:'').maybeSingle()
     ]);
+    // Kein Zugriff mehr (rausgeworfen / Liga geschlossen): RLS liefert für
+    // die Liga-Zeile "0 rows" (PGRST116) bzw. keine Membership → zur
+    // Übersicht statt Fehler-Endlosschleife.
+    if((lg.error && lg.error.code==='PGRST116') || (!me.error && !me.data)){
+      toast('Du bist kein Mitglied dieser Liga mehr', true);
+      setTimeout(goHome, 1200);
+      return;
+    }
     if(lg.error)throw lg.error; if(p.error)throw p.error; if(se.error)throw se.error;
+    if(me.data && me.data.role) LK.role=me.data.role;
+    LK._joinEnabled=lg.data.join_enabled!==false;
     const serverRev=Number(lg.data.rev||0);
 
     // Matches: Delta-Sync über created_at/updated_at (IndexedDB-Cache, §P).
@@ -119,6 +130,8 @@ async function loadAll(){
     if(window._updateRecapBtn) window._updateRecapBtn();
     if(window._updatePosHistBtn) window._updatePosHistBtn();
     render();
+    // PHASE 2: nach frischem Beitritt einmalig "Welcher Spieler bist du?"
+    if(typeof maybeShowClaimOnboarding==='function') maybeShowClaimOnboarding();
     // News-System v8.3: Stories aus DB synchronisieren.
     //   1. Generator erzeugt Story-Objekte aus Live-Daten
     //   2. INSERT ON CONFLICT DO NOTHING in Supabase

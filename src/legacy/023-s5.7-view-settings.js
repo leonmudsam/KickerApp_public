@@ -25,9 +25,16 @@ function vSettings(){
     udGames:    Math.round((cfg.underdog_games_max ?? 0.05)*100),
     lowDamp:    Math.round((cfg.low_elo_loss_damp ?? 0)*100),
   };
-  return `
-    <div class="view-head"><h2>Formel</h2><p>Feintuning der Elo-Berechnung</p></div>
-
+  // PHASE 2: Einstellungen sind für alle Mitglieder offen (kein Passwort
+  // mehr); die Formel-Slider ändern leagues.settings und sind daher nur
+  // für Gründer/Admins editierbar (RLS erzwingt das serverseitig).
+  const _admin = typeof _lkIsAdmin==='function' && _lkIsAdmin();
+  const formulaHtml = !_admin ? `
+    <div class="cfg-section-title">Elo-Formel</div>
+    <div class="card"><p style="font-size:12px;color:var(--ink2);line-height:1.55;margin:0">
+      Die Formel-Parameter kann nur der Gründer oder ein Admin der Liga
+      anpassen. Frag in deiner Runde — oder lass dich befördern. 😉
+    </p></div>` : `
     <div class="cfg-section-title">Grundparameter</div>
     <div class="card">
       ${sl('cfgK','K-Faktor (Tempo)',c.k,8,64,'')}
@@ -101,7 +108,14 @@ function vSettings(){
         gespeicherten Match-Deltas überschrieben.
       </p>
       <button class="btn" id="recalcBtn" style="margin-top:14px;width:100%;display:inline-flex;align-items:center;justify-content:center;gap:8px">${svgI('cycle')} Alle Matches rückwirkend neu berechnen</button>
-    </div>
+    </div>`;
+
+  return `
+    <div class="view-head"><h2>Einstellungen</h2><p>Liga · Mitglieder · Konto · Formel</p></div>
+
+    ${typeof vLeagueSettings==='function' ? vLeagueSettings() : ''}
+
+    ${formulaHtml}
 
     <div class="card" style="margin-top:14px">
       <div class="mini-label">App-Version</div>

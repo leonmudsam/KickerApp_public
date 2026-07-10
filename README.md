@@ -6,6 +6,32 @@ mehrere Ligen parallel — die Liga ist das zentrale Objekt, Accounts sind
 optional, Spieler gehören zur Liga (nie zu einem Login).
 Der vollständige Plan liegt in [`docs/KICKER_LEAGUES_PLAN.md`](docs/KICKER_LEAGUES_PLAN.md).
 
+## Stand: Phase 2 (Plattform-Politur)
+
+- **Konto (optional)**: anonymen Zugang per E-Mail sichern — OTP-Code statt
+  Redirect-Links (robust als PWA/auf GitHub Pages). Login auf neuem Gerät
+  über den Home-Screen; alle Mitgliedschaften hängen an derselben
+  `auth.uid()` (In-Place-Upgrade).
+- **Einstellungen ohne Passwort-Lock**: offen für jedes Mitglied; was wer
+  ändern darf, entscheiden Rollen (Formel-Slider, Invite-Rotation,
+  Beitritts-Toggle, Umbenennen: Gründer/Admin) — serverseitig via RLS.
+- **Mitgliederverwaltung**: Rollen (Gründer/Admin/Mitglied), Kick,
+  atomarer Gründer-Transfer (`transfer_ownership`), Austritt/Kick gibt
+  geclaimte Spieler frei (Trigger).
+- **Claim-Flow**: „Welcher Spieler bist du?" nach dem Beitritt + jederzeit
+  in den Einstellungen; exklusiv mit Übernahme, auditiert.
+- **Liga schließen** (`close_league`, nur Gründer — Guard-Trigger) und
+  **Audit-Log-UI** (Gründer/Admin): Ergebnis-Korrekturen, Umbenennungen,
+  Rollen-Änderungen mit Zeit + Verursacher.
+- **Home-Screen v2**: mobile-first, aufklappbare Erstellen/Beitreten-
+  Aktionen, Rollen-Badges auf Liga-Karten, Konto-Bereich.
+- **Badge-Fix**: Elo-Schwellen (Aufsteiger/Dominator/Dynastie) sind jetzt
+  relativ zum Liga-Start-Elo statt absolut.
+
+**Dashboard-Voraussetzung für E-Mail-Codes:** In den Supabase-E-Mail-
+Templates („Magic Link" und „Change Email Address") muss `{{ .Token }}`
+vorkommen, damit der 6-stellige Code in der Mail steht.
+
 ## Stand: Phase 1 (Plattform-Kern)
 
 - **Plattform-Ebene** (`src/legacy/001b-platform-…`): stiller anonymer

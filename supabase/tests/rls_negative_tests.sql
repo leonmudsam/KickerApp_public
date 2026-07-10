@@ -138,7 +138,79 @@ begin
   select rev into n from public.leagues where id = lid;
   if n <> 1 then raise exception 'FAIL: rev nicht gebumpt (rev=%)', n; end if;
 
-  raise notice 'ALLE RLS-NEGATIVTESTS BESTANDEN';
+  -- ═══ PHASE 2: close_league · transfer_ownership · Kick-Hygiene ═══
+
+  -- Mitglied (u2): weder schließen noch übertragen noch deleted_at setzen
+  perform set_config('request.jwt.claims', json_build_object('sub', u2, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  begin
+    perform public.close_league(lid);
+    raise exception 'FAIL: Mitglied konnte Liga schließen';
+  exception when others then
+    if sqlerrm <> 'forbidden' then raise; end if;
+  end;
+  begin
+    perform public.transfer_ownership(lid, u2);
+    raise exception 'FAIL: Mitglied konnte Ownership übertragen';
+  exception when others then
+    if sqlerrm <> 'forbidden' then raise; end if;
+  end;
+  update public.leagues set deleted_at = now() where id = lid;
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'FAIL: Mitglied konnte deleted_at setzen'; end if;
+
+  -- Owner (u1) befördert u2 zu Admin (direktes Update, Policy-gedeckt)
+  perform set_config('request.jwt.claims', json_build_object('sub', u1, 'role', 'authenticated')::text, true);
+  update public.league_members set role = 'admin' where league_id = lid and user_id = u2;
+  get diagnostics n = row_count;
+  if n <> 1 then raise exception 'FAIL: Owner konnte Rolle nicht ändern'; end if;
+
+  -- Admin (u2) darf trotz UPDATE-Policy NICHT schließen (leagues_guard)
+  perform set_config('request.jwt.claims', json_build_object('sub', u2, 'role', 'authenticated')::text, true);
+  begin
+    update public.leagues set deleted_at = now() where id = lid;
+    raise exception 'FAIL: Admin konnte Liga per Direkt-Update schließen';
+  exception when others then
+    if sqlerrm not like '%Owner%' then raise; end if;
+  end;
+
+  -- Transfer: u1 (Owner) → u2; danach ist u1 Admin
+  perform set_config('request.jwt.claims', json_build_object('sub', u1, 'role', 'authenticated')::text, true);
+  perform public.transfer_ownership(lid, u2);
+  reset role;
+  select count(*) into n from public.league_members
+    where league_id = lid and user_id = u2 and role = 'owner';
+  if n <> 1 then raise exception 'FAIL: Transfer hat u2 nicht zum Owner gemacht'; end if;
+  select count(*) into n from public.league_members
+    where league_id = lid and user_id = u1 and role = 'admin';
+  if n <> 1 then raise exception 'FAIL: Transfer hat u1 nicht zum Admin gemacht'; end if;
+
+  -- Kick löst Claims: u1 claimt Spieler B, u2 (Owner) kickt u1 → Claim frei
+  perform set_config('request.jwt.claims', json_build_object('sub', u1, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  update public.players set claimed_by = u1 where id = p2;
+  perform set_config('request.jwt.claims', json_build_object('sub', u2, 'role', 'authenticated')::text, true);
+  delete from public.league_members where league_id = lid and user_id = u1;
+  get diagnostics n = row_count;
+  if n <> 1 then raise exception 'FAIL: Owner konnte Admin nicht kicken'; end if;
+  reset role;
+  select count(*) into n from public.players where id = p2 and claimed_by is not null;
+  if n <> 0 then raise exception 'FAIL: Kick hat Claim nicht freigegeben'; end if;
+  select count(*) into n from public.players where id = p1 and claimed_by = u2;
+  if n <> 1 then raise exception 'FAIL: fremder Claim wurde fälschlich freigegeben'; end if;
+
+  -- Owner (u2, jetzt letztes Mitglied) schließt die Liga
+  perform set_config('request.jwt.claims', json_build_object('sub', u2, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  perform public.close_league(lid);
+  reset role;
+  select count(*) into n from public.leagues
+    where id = lid and deleted_at is not null and join_enabled = false;
+  if n <> 1 then raise exception 'FAIL: close_league hat nicht geschlossen'; end if;
+  select count(*) into n from public.league_invites where league_id = lid and revoked_at is null;
+  if n <> 0 then raise exception 'FAIL: close_league hat Invites nicht revoked'; end if;
+
+  raise notice 'ALLE RLS-NEGATIVTESTS BESTANDEN (Phase 1 + 2)';
 end;
 $$;
 

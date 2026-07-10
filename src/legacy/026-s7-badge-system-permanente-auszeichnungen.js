@@ -40,13 +40,15 @@ const BADGES=[
   {id:'atk50',ic:'bolt2',name:'Mittelstürmer',desc:'50 Spiele als Stürmer',
     multi:true,count:(id,ms)=>{const s=playerStats(id,ms);return s.atkG>=50?1:0;}},
   // Zeile 4 — Aufsteiger, Dominator
-  {id:'climber_100',ic:'climb',name:'Aufsteiger',desc:'100 Elo in einer Saison erreicht',
-    multi:false,count:(id,ms)=>seasonPeakFor(id)>=100?1:0},
-  {id:'dominator_400',ic:'dominator',name:'Dominator',desc:'400 Elo in einer Saison erreicht',
-    multi:false,count:(id,ms)=>seasonPeakFor(id)>=400?1:0},
+  // Schwellen sind RELATIV zum Liga-Start-Elo (Ligen starten z. B. bei 1000 —
+  // absolute Werte würden die Badges sofort verschenken)
+  {id:'climber_100',ic:'climb',name:'Aufsteiger',desc:'+100 Elo über Saison-Start erreicht',
+    multi:false,count:(id,ms)=>seasonPeakFor(id)-cfg.start_elo>=100?1:0},
+  {id:'dominator_400',ic:'dominator',name:'Dominator',desc:'+400 Elo über Saison-Start erreicht',
+    multi:false,count:(id,ms)=>seasonPeakFor(id)-cfg.start_elo>=400?1:0},
   // Zeile 5 — Dynastie, Vize-Meister
-  {id:'dynasty_600',ic:'temple',name:'Dynastie',desc:'600 Elo in einer Saison erreicht',
-    multi:false,count:(id,ms)=>seasonPeakFor(id)>=600?1:0},
+  {id:'dynasty_600',ic:'temple',name:'Dynastie',desc:'+600 Elo über Saison-Start erreicht',
+    multi:false,count:(id,ms)=>seasonPeakFor(id)-cfg.start_elo>=600?1:0},
 
     // ══ MEHRFACH-BADGES — gruppiert nach Thema ══
 //Reihenfolge überarbeitet / Möglciherweise Abweichung von Namen in //
@@ -1205,9 +1207,11 @@ function getBadgeEarnedCache(){
       const myEloAfter=eloAfter[id];
       if(myEloAfter!==undefined && myEloAfter>s.peakElo){
         s.peakElo=myEloAfter;
-        if(!s.climbed   && s.peakElo>=100){ s.climbed=true;   fire('climber_100');   }
-        if(!s.dominated && s.peakElo>=400){ s.dominated=true; fire('dominator_400'); }
-        if(!s.dynastic  && s.peakElo>=600){ s.dynastic=true;  fire('dynasty_600');   }
+        // Schwellen relativ zum Liga-Start-Elo (siehe Badge-Definitionen)
+        const peakGain=s.peakElo-cfg.start_elo;
+        if(!s.climbed   && peakGain>=100){ s.climbed=true;   fire('climber_100');   }
+        if(!s.dominated && peakGain>=400){ s.dominated=true; fire('dominator_400'); }
+        if(!s.dynastic  && peakGain>=600){ s.dynastic=true;  fire('dynasty_600');   }
       }
 
       // ── Klares Ding: Sieg mit Tordifferenz ≥ 7 ──
